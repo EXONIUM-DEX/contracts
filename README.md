@@ -1,6 +1,9 @@
-# Exonium Farming Contracts
+ExoniumDEX is a decentralised exchange (DEX) primarily designed to be a unifying exchange of all cryptocurrencies and synthetic assets through a unique oracle concept and bridging function. It will be used to support all on-chain or off-chain assets on various blockchain, providing significant liquidity to the decentralised finance (DEFI) universe by being all-inclusive. As a one-stop DEX, ExoniumDEX will be positioned as a pivotal platform in the cryptocurrency space, allowing inter-exchange of all assets regardless of blockchain technology in a safe, transparent and permission-less environment. 
 
-https://exonium.one/.
+# ExoniumDEX Contracts
+All smart contracts deployed will be updated here with bscscan links. 
+
+Website: https://exonium.one/.
 
 ## Deployed Contracts
 
