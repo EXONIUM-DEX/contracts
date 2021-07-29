@@ -2,14 +2,15 @@
 
 pragma solidity 0.6.12;
 
-import "./libs/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "./TEXOToken.sol";
-import "./libs/ReentrancyGuard.sol";
 
 contract TEXOOrchestrator is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     using Address for address;
-    using SafeBEP20 for IBEP20;
+    using SafeERC20 for IERC20;
 
     // Info of each user.
     struct UserInfo {
@@ -31,7 +32,7 @@ contract TEXOOrchestrator is Ownable, ReentrancyGuard {
 
     // Info of each pool.
     struct PoolInfo {
-        IBEP20 lpToken; // Address of LP token contract.
+        IERC20 lpToken; // Address of LP token contract.
         uint256 allocPoint; // How many allocation points assigned to this pool. tEXOs to distribute per block.
         uint256 blockToReceiveReward; // Block number at which to allow receiving reward
         uint256 inActiveBlock; // Block at which to stop staking and generating rewards
@@ -68,18 +69,18 @@ contract TEXOOrchestrator is Ownable, ReentrancyGuard {
     mapping(address => address) public referrers; // account_address -> referrer_address
     mapping(address => uint256) public referredCount; // referrer_address -> num_of_referred
     // Pool Exists Mapper
-    mapping(IBEP20 => bool) public poolExistence;
+    mapping(IERC20 => bool) public poolExistence;
     // Pool ID Tracker Mapper
-    mapping(IBEP20 => uint256) public poolIdForLpAddress;
+    mapping(IERC20 => uint256) public poolIdForLpAddress;
 
     // Initial emission rate: 0.5 tEXO per block.
-    uint256 public constant INITIAL_EMISSION_RATE = 500 finney;
+    uint256 public constant INITIAL_EMISSION_RATE = 0.35 ether; // 350 finney
 
     // Minimum emission rate: 0.1 tEXO per block.
-    uint256 public constant MINIMUM_EMISSION_RATE = 100 finney;
+    uint256 public constant MINIMUM_EMISSION_RATE = 0.07 ether; // 70 finney
 
     // Reduce emission every 28,800 blocks ~ 24 hours.
-    uint256 public constant EMISSION_REDUCTION_PERIOD_BLOCKS = 28800;
+    uint256 public constant EMISSION_REDUCTION_PERIOD_BLOCKS = 43200; // 43200 block
     // Emission reduction rate per period in basis points: 15%.
     uint256 public constant EMISSION_REDUCTION_RATE_PER_PERIOD = 1500;
     // Last reduction period index
@@ -119,13 +120,13 @@ contract TEXOOrchestrator is Ownable, ReentrancyGuard {
         return poolInfo.length;
     }
 
-    function getPoolIdForLpToken(IBEP20 _lpToken) external view returns (uint256) {
+    function getPoolIdForLpToken(IERC20 _lpToken) external view returns (uint256) {
         require(poolExistence[_lpToken] != false, "getPoolIdForLpToken: do not exist");
         return poolIdForLpAddress[_lpToken];
     }
 
     // Modifier to check Duplicate pools
-    modifier nonDuplicated(IBEP20 _lpToken) {
+    modifier nonDuplicated(IERC20 _lpToken) {
         require(poolExistence[_lpToken] == false, "nonDuplicated: duplicated");
         _;
     }
@@ -133,7 +134,7 @@ contract TEXOOrchestrator is Ownable, ReentrancyGuard {
     // Add a new lp to the pool. Can only be called by the owner.
     function add(
         uint256 _allocPoint,
-        IBEP20 _lpToken,
+        IERC20 _lpToken,
         uint16 _depositFeeBP,
         bool _withUpdate,
         uint256 _blockToReceiveReward,
@@ -459,6 +460,7 @@ contract TEXOOrchestrator is Ownable, ReentrancyGuard {
     }
 
     function setEmissionRate(uint256 newEmissionRate) public onlyOwner {
+        require(newEmissionRate >= MINIMUM_EMISSION_RATE, "setEmissionRate: must not be less than minimum");
         uint256 previousEmissionRate = tEXOPerBlock;
         tEXOPerBlock = newEmissionRate;
 
