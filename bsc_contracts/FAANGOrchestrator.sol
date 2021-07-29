@@ -34,6 +34,7 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
         IBEP20 lpToken; // Address of LP token contract.
         uint256 lastRewardBlock; // Last block number that FAANGs distribution occurs.
         uint256 accFAANGPerShare; // Accumulated FAANG per share, times 1e12. See below.
+        uint256 inActiveBlock;
     }
 
     // The FAANG Token!
@@ -41,8 +42,6 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
 
     // FAANG tokens created per block.
     uint256 public FAANGPerBlock = 1 ether;
-
-    uint256 inActiveBlock;
 
     // Block when mining starts
     uint256 startBlock;
@@ -73,8 +72,6 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
     ) public {
         FAANG = _FAANG;
         startBlock = _startBlock;
-        inActiveBlock = _startBlock.add(864000); // 30 days after startblock
-        // 864000
     }
 
     // Get number of pools added.
@@ -84,10 +81,7 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
 
     function updateStartBlock(uint256 _newStartBlock) public onlyOwner {
         require(_newStartBlock > startBlock, "update startblock: new start block must be after previous start block");
-
-        PoolInfo storage faangPool = poolInfo[0];
-
-        faangPool.lastRewardBlock = _newStartBlock;
+        startBlock = _newStartBlock;
     }
 
     function getPoolIdForLpToken(IBEP20 _lpToken) external view returns (uint256) {
@@ -104,8 +98,11 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
     // Add a new lp to the pool. Can only be called by the owner.
     function add(
         IBEP20 _lpToken,
-        bool _withUpdate
+        bool _withUpdate,
+        uint256 _inactiveBlock
     ) public onlyOwner nonDuplicated(_lpToken) {
+        require(_inactiveBlock > startBlock, "Inactive block need to larger than startBlock");
+
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -116,11 +113,26 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
             PoolInfo({
                 lpToken: _lpToken,
                 lastRewardBlock: block.number > startBlock ? block.number : startBlock,
-                accFAANGPerShare: 0
+                accFAANGPerShare: 0,
+                inActiveBlock: _inactiveBlock
             })
         );
 
         poolIdForLpAddress[_lpToken] = poolInfo.length - 1;
+    }
+
+    function set(
+        uint256 _pid,
+        bool _withUpdate,
+        uint256 _inactiveBlock
+    ) public onlyOwner {
+        require(_inactiveBlock > startBlock, "Inactive block need to larger than startBlock");
+
+        if (_withUpdate) {
+            massUpdatePools();
+        }
+
+        poolInfo[_pid].inActiveBlock = _inactiveBlock;
     }
 
     // Return reward multiplier over the given _from to _to block.
@@ -128,8 +140,9 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
         return _to.sub(_from);
     }
 
-    function minCurrentBlockAndInactiveBlockIfExist() internal view returns (uint256) {
-        return block.number > inActiveBlock ? inActiveBlock : block.number;
+    function minCurrentBlockAndInactiveBlockIfExist(uint256 _pid) internal view returns (uint256) {
+        PoolInfo storage pool = poolInfo[_pid];
+        return block.number > pool.inActiveBlock ? pool.inActiveBlock : block.number;
     }
 
     // View function to see pending FAANGs on frontend.
@@ -140,7 +153,7 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
         uint256 accFAANGPerShare = pool.accFAANGPerShare;
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
 
-        uint256 blockToCalculateMultiplier = minCurrentBlockAndInactiveBlockIfExist();
+        uint256 blockToCalculateMultiplier = minCurrentBlockAndInactiveBlockIfExist(_pid);
 
         if (blockToCalculateMultiplier > pool.lastRewardBlock && lpSupply != 0) {
             uint256 multiplier = getMultiplier(pool.lastRewardBlock, blockToCalculateMultiplier);
@@ -174,7 +187,7 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
     function updatePool(uint256 _pid) public {
         PoolInfo storage pool = poolInfo[_pid];
 
-        uint256 blockToCalculateRewards = minCurrentBlockAndInactiveBlockIfExist();
+        uint256 blockToCalculateRewards = minCurrentBlockAndInactiveBlockIfExist(_pid);
 
         if (blockToCalculateRewards <= pool.lastRewardBlock) {
             return;
@@ -208,11 +221,10 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
     }
 
     function deposit(uint256 _pid, uint256 _amount) public nonReentrant {
-        if (inActiveBlock > 0) {
-            require(block.number <= inActiveBlock, "deposit: staking period has ended");
-        }
-
         PoolInfo storage pool = poolInfo[_pid];
+
+        require(block.number <= pool.inActiveBlock, "deposit: staking period has ended");
+
         UserInfo storage user = userInfo[_pid][msg.sender];
 
         updatePool(_pid);
@@ -300,6 +312,6 @@ contract FAANGOrchestrator is Ownable, ReentrancyGuard {
             transferSuccess = FAANG.transfer(_to, _amount);
         }
 
-        require(transferSuccess, "safePlumTransfer: transfer failed.");
+        require(transferSuccess, "safeFAANGTransfer: transfer failed.");
     }
 }
